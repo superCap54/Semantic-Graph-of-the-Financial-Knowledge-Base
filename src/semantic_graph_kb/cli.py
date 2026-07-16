@@ -4,6 +4,7 @@ import argparse
 import re
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 ROOT = Path.cwd()
@@ -38,6 +39,76 @@ def today() -> str:
 def safe_filename(value: str) -> str:
     value = re.sub(r'[<>:"/\\|?*]+', "-", value).strip()
     return re.sub(r"\s+", " ", value)[:140] or "untitled"
+
+
+def strip_frontmatter(text: str) -> str:
+    if not text.startswith("---\n"):
+        return text
+    parts = text.split("---\n", 2)
+    if len(parts) == 3:
+        return parts[2]
+    return text
+
+
+def extract_frontmatter_value(text: str, key: str) -> str:
+    if not text.startswith("---\n"):
+        return ""
+    header = text.split("---\n", 2)[1]
+    for line in header.splitlines():
+        if line.startswith(f"{key}:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def parse_horizon_items(text: str) -> list[dict[str, str]]:
+    body = strip_frontmatter(text)
+    pattern = re.compile(
+        r'<a id="(?P<id>item-\d+)"></a>\s*\n'
+        r'## \[(?P<title>[^\]]+)\]\((?P<url>[^)]+)\)\s*⭐️\s*(?P<score>[\d.]+)/10\s*\n\n'
+        r'(?P<body>.*?)(?=\n---\n\n<a id="item-\d+"></a>|\n---\s*$|\Z)',
+        re.DOTALL,
+    )
+    items = []
+    for match in pattern.finditer(body):
+        item_body = match.group("body").strip()
+        source_line = ""
+        summary_lines = []
+        for line in item_body.splitlines():
+            if re.match(r"^[\w\\_]+ · .+ · .+", line):
+                source_line = line.replace("\\_", "_")
+                break
+            summary_lines.append(line)
+        summary = "\n".join(summary_lines).strip()
+        background = ""
+        background_match = re.search(r"\*\*背景\*\*:\s*(.*?)(?=\n\n<details>|\n\n\*\*标签\*\*:|\Z)", item_body, re.DOTALL)
+        if background_match:
+            background = background_match.group(1).strip()
+        tags = ""
+        tags_match = re.search(r"\*\*标签\*\*:\s*(.*)", item_body)
+        if tags_match:
+            tags = tags_match.group(1).strip()
+        items.append(
+            {
+                "id": match.group("id"),
+                "title": match.group("title").strip(),
+                "url": match.group("url").strip(),
+                "horizon_score": match.group("score").strip(),
+                "summary": summary,
+                "source_line": source_line,
+                "background": background,
+                "tags": tags,
+                "raw_body": item_body,
+            }
+        )
+    return items
+
+
+def source_name_from_item(item: dict[str, str]) -> str:
+    parts = [p.strip() for p in item.get("source_line", "").split("·")]
+    if len(parts) >= 2 and parts[1]:
+        return parts[1]
+    host = urlparse(item["url"]).hostname or ""
+    return host.removeprefix("www.") or "unknown"
 
 
 def ensure_dirs() -> None:
@@ -184,6 +255,80 @@ def cmd_import_horizon(args: argparse.Namespace) -> None:
     print(target)
 
 
+def cmd_split_horizon(args: argparse.Namespace) -> None:
+    ensure_dirs()
+    report = Path(args.report)
+    if not report.exists():
+        raise FileNotFoundError(report)
+
+    text = report.read_text(encoding=args.encoding)
+    query = args.query or extract_frontmatter_value(text, "query")
+    report_name = report.stem
+    report_date = args.date or (re.match(r"\d{4}-\d{2}-\d{2}", report.name).group(0) if re.match(r"\d{4}-\d{2}-\d{2}", report.name) else today())
+    items = parse_horizon_items(text)
+    output_paths = []
+
+    for idx, item in enumerate(items, start=1):
+        filename = f"{report_date} {safe_filename(item['title'])}.md"
+        target = RAW / "news" / filename
+        if target.exists() and not args.force:
+            output_paths.append(target)
+            continue
+        source_name = source_name_from_item(item)
+        captured_at = datetime.now().astimezone().isoformat(timespec="seconds")
+        target.write_text(
+            "\n".join(
+                [
+                    "---",
+                    "source_adapter: horizon",
+                    f"query: {query}",
+                    f"title: {item['title']}",
+                    f"url: {item['url']}",
+                    f"source_name: {source_name}",
+                    f"horizon_item_id: {item['id']}",
+                    f"horizon_score: {item['horizon_score']}",
+                    f"source_report: {report_name}",
+                    f"captured_at: {captured_at}",
+                    "source_tier: unknown",
+                    "evidence_type: news",
+                    "status: raw",
+                    "---",
+                    "",
+                    f"# {item['title']}",
+                    "",
+                    "## 摘要",
+                    "",
+                    item["summary"],
+                    "",
+                    "## 背景",
+                    "",
+                    item["background"],
+                    "",
+                    "## Horizon 评分",
+                    "",
+                    f"- Horizon 评分：{item['horizon_score']}/10",
+                    "",
+                    "## 标签",
+                    "",
+                    item["tags"],
+                    "",
+                    "## 来源",
+                    "",
+                    f"- Horizon 报告：[[{report_name}]]",
+                    f"- 原文链接：{item['url']}",
+                    f"- 来源信息：{item['source_line']}",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        output_paths.append(target)
+
+    print(f"Split {len(items)} items from {report}")
+    for path in output_paths:
+        print(path)
+
+
 def cmd_draft(args: argparse.Namespace) -> None:
     ensure_dirs()
     folder = ROOT / KIND_DIRS[args.kind]
@@ -279,6 +424,14 @@ def build_parser() -> argparse.ArgumentParser:
     horizon.add_argument("--date", default="")
     horizon.add_argument("--encoding", default="utf-8")
     horizon.set_defaults(func=cmd_import_horizon)
+
+    split_horizon = sub.add_parser("split-horizon", help="Split an imported Horizon report into raw/news cards.")
+    split_horizon.add_argument("report")
+    split_horizon.add_argument("--query", default="")
+    split_horizon.add_argument("--date", default="")
+    split_horizon.add_argument("--encoding", default="utf-8")
+    split_horizon.add_argument("--force", action="store_true")
+    split_horizon.set_defaults(func=cmd_split_horizon)
 
     draft = sub.add_parser("draft", help="Create a wiki node draft.")
     draft.add_argument("--kind", choices=sorted(KIND_DIRS), required=True)

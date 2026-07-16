@@ -9,7 +9,9 @@ Horizon 是第一阶段采集主入口，但本项目不直接嵌入 Horizon 代
 - Horizon 负责采集和聚合。
 - 本项目负责证据保存、分析、去重、事件合并、Obsidian 编译。
 
-当前已经实现最小导入命令：
+当前已经实现两个命令。
+
+导入 Horizon 原始报告：
 
 ```bash
 sgkb import-horizon path/to/horizon-report.md --query "华大基因"
@@ -17,12 +19,20 @@ sgkb import-horizon path/to/horizon-report.md --query "华大基因"
 
 它会先把 Horizon Markdown 报告保存进 `raw/horizon-reports/`。
 
-真正的新闻拆分解析器需要一份实际 Horizon Markdown 输出样例。拿到样例后，下一步 adapter 会实现：
+拆分 Horizon 报告为单条 raw 新闻卡片：
+
+```bash
+sgkb split-horizon "raw/horizon-reports/2026-07-16 华大基因 Horizon报告.md"
+```
+
+它会把报告里的每条 `item-*` 写入 `raw/news/`。
+
+下一步 adapter 会继续实现：
 
 ```text
-import-horizon <report.md>
--> raw/horizon-reports/
--> raw/news/
+raw/news/
+-> analyze-news
+-> 事件/公司/行业/政策/产品
 ```
 
 ## 输入
