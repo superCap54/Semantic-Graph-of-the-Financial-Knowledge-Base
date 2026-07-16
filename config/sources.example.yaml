@@ -1,22 +1,22 @@
 sources:
+  horizon:
+    enabled: true
+    type: markdown_report
+    inbox: raw/horizon-reports
+
+  eastmoney:
+    enabled: false
+    type: api
+
+  xueqiu:
+    enabled: false
+    type: api
+
+  cninfo:
+    enabled: false
+    type: official
+
   manual:
     enabled: true
     type: manual
-
-  rss:
-    enabled: false
-    type: rss
-    feeds: []
-
-  horizon:
-    enabled: false
-    type: horizon
-    base_url: ${HORIZON_API_BASE}
-    api_key: ${HORIZON_API_KEY}
-
-  financial_news:
-    enabled: false
-    type: api
-    provider: TBD
-    api_key: ${FINANCIAL_NEWS_API_KEY}
 

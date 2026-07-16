@@ -1,0 +1,24 @@
+targets:
+  - name: 华大基因
+    type: company
+    ticker: 300676.SZ
+    aliases:
+      - BGI Genomics
+      - 华大
+    tracking_scope:
+      breadth: broad
+      include:
+        - company_news
+        - announcements
+        - financial_reports
+        - industry_news
+        - policies
+        - products
+        - competitors
+        - upstream_downstream
+        - social_discussion
+    needs_user_confirmation:
+      - competitors
+      - key_products
+      - upstream_downstream
+
