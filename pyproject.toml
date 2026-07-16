@@ -1,0 +1,19 @@
+[project]
+name = "semantic-graph-financial-kb"
+version = "0.1.0"
+description = "A local-first financial semantic knowledge graph compiled into an Obsidian-readable wiki."
+requires-python = ">=3.11"
+dependencies = [
+  "pyyaml>=6.0.2",
+]
+
+[project.scripts]
+sgkb = "semantic_graph_kb.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
